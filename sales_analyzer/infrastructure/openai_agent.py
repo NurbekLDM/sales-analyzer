@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional
+import json
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import pandas as pd
 from openai import OpenAI
@@ -14,6 +16,12 @@ from sales_analyzer.domain.analyzer import (
 )
 
 
+@dataclass
+class AIAgentResponse:
+    answer: str
+    chart: Optional[dict[str, Any]]
+
+
 def _safe_preview(df: pd.DataFrame, rows: int = 12) -> str:
     preview = df.head(rows).copy()
     return preview.to_csv(index=False)
@@ -21,7 +29,13 @@ def _safe_preview(df: pd.DataFrame, rows: int = 12) -> str:
 
 def _product_region_sales(df: pd.DataFrame) -> pd.DataFrame:
     cols = map_columns(df)
-    if not cols["product"] or not cols["region"] or not cols["sales"]:
+    if (
+        not cols["product"]
+        or not cols["region"]
+        or not cols["sales"]
+        or cols["product"] == cols["sales"]
+        or cols["region"] == cols["sales"]
+    ):
         return pd.DataFrame(columns=["product", "region", "sales"])
 
     result = (
@@ -36,7 +50,13 @@ def _product_region_sales(df: pd.DataFrame) -> pd.DataFrame:
 
 def _product_region_summary(df: pd.DataFrame) -> pd.DataFrame:
     cols = map_columns(df)
-    if not cols["product"] or not cols["region"] or not cols["sales"]:
+    if (
+        not cols["product"]
+        or not cols["region"]
+        or not cols["sales"]
+        or cols["product"] == cols["sales"]
+        or cols["region"] == cols["sales"]
+    ):
         return pd.DataFrame(columns=["product", "region", "sales", "quantity"])
 
     agg_spec = {cols["sales"]: "sum"}
@@ -95,12 +115,25 @@ def _build_context(df: pd.DataFrame) -> str:
     )
 
 
+def _safe_parse_agent_json(raw: str) -> AIAgentResponse:
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return AIAgentResponse(answer=raw.strip() or "Javob olinmadi.", chart=None)
+
+    answer = str(payload.get("answer", "")).strip() or "Javob olinmadi."
+    chart = payload.get("chart")
+    if isinstance(chart, dict):
+        return AIAgentResponse(answer=answer, chart=chart)
+    return AIAgentResponse(answer=answer, chart=None)
+
+
 def ask_openai_agent(
     df: pd.DataFrame,
     question: str,
     api_key: str,
     model: str = "gpt-4.1-mini",
-) -> str:
+) -> AIAgentResponse:
     client = OpenAI(api_key=api_key)
     context = _build_context(df)
 
@@ -111,7 +144,8 @@ def ask_openai_agent(
         "If user asks specific product/region/date filter, calculate using the provided aggregate tables exactly. "
         "Never replace a specific filtered question with a generic top-region/top-product answer. "
         "If quantity column is available and user asks for dona/nechta/quantity, you must return total quantity. "
-        "Do not claim quantity is unavailable when quantity exists in the context."
+        "Do not claim quantity is unavailable when quantity exists in the context. "
+        "Return ONLY valid JSON matching the requested schema."
     )
 
     user_prompt = (
@@ -123,10 +157,28 @@ def ask_openai_agent(
     response = client.chat.completions.create(
         model=model,
         temperature=0.2,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+            {
+                "role": "user",
+                                "content": user_prompt
+                                + "\n\nOutput JSON schema:\n"
+                                + """
+{
+    "answer": "string",
+    "chart": {
+        "title": "string",
+        "type": "bar|line|none",
+        "x_label": "string",
+        "y_label": "string",
+        "data": [{"label": "string", "value": 123.45}]
+    }
+}
+If chart is not suitable, set chart.type="none" and chart.data=[].
+""",
+            },
         ],
     )
     content: Optional[str] = response.choices[0].message.content
-    return (content or "Javob olinmadi.").strip()
+    return _safe_parse_agent_json((content or "").strip())

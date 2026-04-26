@@ -11,6 +11,8 @@ def _ensure_state() -> None:
         st.session_state.chat_history = []
     if "last_perf" not in st.session_state:
         st.session_state.last_perf = None
+    if "last_ai_chart" not in st.session_state:
+        st.session_state.last_ai_chart = None
 
 
 def _render_performance() -> None:
@@ -47,6 +49,43 @@ def _render_history() -> None:
         st.markdown(f"**A:** {item['answer']}")
 
 
+def _render_ai_chart() -> None:
+    chart = st.session_state.last_ai_chart
+    if not isinstance(chart, dict):
+        return
+
+    chart_type = str(chart.get("type", "none")).lower()
+    data = chart.get("data")
+    if chart_type == "none" or not isinstance(data, list) or not data:
+        return
+
+    rows = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label")
+        value = item.get("value")
+        try:
+            value = float(value)
+        except Exception:
+            continue
+        rows.append({"label": str(label), "value": value})
+
+    if not rows:
+        return
+
+    chart_df = pd.DataFrame(rows)
+    title = str(chart.get("title", "AI asosida chart"))
+    st.subheader(title)
+
+    if chart_type == "line":
+        st.line_chart(chart_df.set_index("label")["value"])
+    else:
+        st.bar_chart(chart_df.set_index("label")["value"])
+
+    st.dataframe(chart_df, use_container_width=True)
+
+
 def render_question_panel(df, config: AppConfig, engine: Engine) -> None:
     _ensure_state()
 
@@ -64,6 +103,7 @@ def render_question_panel(df, config: AppConfig, engine: Engine) -> None:
                 st.stop()
 
             st.session_state.chat_history.insert(0, {"question": question, "answer": result.answer})
+            st.session_state.last_ai_chart = result.ai_chart
             st.session_state.last_perf = {
                 "total_ms": result.total_ms,
                 "slowest_stage": result.slowest_stage,
@@ -72,6 +112,7 @@ def render_question_panel(df, config: AppConfig, engine: Engine) -> None:
             }
 
             st.success(result.answer)
+            _render_ai_chart()
             if result.detail_df is not None and not result.detail_df.empty:
                 st.dataframe(result.detail_df, use_container_width=True)
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 from sqlalchemy.engine import Engine
@@ -14,6 +14,7 @@ from sales_analyzer.infrastructure.openai_agent import ask_openai_agent
 @dataclass
 class QuestionResult:
     answer: str
+    ai_chart: Optional[dict[str, Any]]
     detail_df: Optional[pd.DataFrame]
     stage_times_ms: dict[str, float]
     db_error: Optional[str]
@@ -44,16 +45,19 @@ class QuestionService:
 
         ai_start = time.perf_counter()
         try:
-            answer = ask_openai_agent(
+            ai_result = ask_openai_agent(
                 df=df,
                 question=question,
                 api_key=config.openai_api_key.strip(),
                 model=config.openai_model.strip() or "gpt-4.1-mini",
             )
+            answer = ai_result.answer
+            ai_chart = ai_result.chart
             stage_times_ms["AI agent javobi"] = (time.perf_counter() - ai_start) * 1000
         except Exception as exc:
             stage_times_ms["AI agent urinishi"] = (time.perf_counter() - ai_start) * 1000
             answer = f"AI agent javob bera olmadi: {exc}"
+            ai_chart = None
 
         parser_start = time.perf_counter()
         _, detail_df = answer_question(df, question)
@@ -70,6 +74,7 @@ class QuestionService:
 
         return QuestionResult(
             answer=answer,
+            ai_chart=ai_chart,
             detail_df=detail_df,
             stage_times_ms=stage_times_ms,
             db_error=db_error,

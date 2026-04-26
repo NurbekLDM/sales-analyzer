@@ -21,20 +21,27 @@ def _normalize(name: str) -> str:
 def map_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
     normalized = {_normalize(col): col for col in df.columns}
     result: Dict[str, Optional[str]] = {key: None for key in ALIASES}
+    used: set[str] = set()
 
+    # First pass: exact alias matching with distinct column assignment.
     for logical, candidates in ALIASES.items():
         for cand in candidates:
             c = _normalize(cand)
-            if c in normalized:
+            if c in normalized and normalized[c] not in used:
                 result[logical] = normalized[c]
+                used.add(normalized[c])
                 break
 
+    # Second pass: soft matching with distinct column assignment.
     for logical, original in result.items():
         if original is not None:
             continue
         for norm_col, raw_col in normalized.items():
+            if raw_col in used:
+                continue
             if any(keyword in norm_col for keyword in ALIASES[logical]):
                 result[logical] = raw_col
+                used.add(raw_col)
                 break
 
     return result
@@ -80,32 +87,28 @@ def compute_metrics(df: pd.DataFrame) -> Dict[str, Optional[float]]:
 
 def top_products(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     cols = map_columns(df)
-    if not cols["product"] or not cols["sales"]:
+    if not cols["product"] or not cols["sales"] or cols["product"] == cols["sales"]:
         return pd.DataFrame(columns=["product", "sales"])
 
     result = (
-        df.groupby(cols["product"], dropna=False)[cols["sales"]]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_n)
-        .reset_index()
+        df.groupby(cols["product"], dropna=False, as_index=False)
+        .agg(sales=(cols["sales"], "sum"))
     )
+    result = result.sort_values("sales", ascending=False).head(top_n)
     result.columns = ["product", "sales"]
     return result
 
 
 def regional_sales(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     cols = map_columns(df)
-    if not cols["region"] or not cols["sales"]:
+    if not cols["region"] or not cols["sales"] or cols["region"] == cols["sales"]:
         return pd.DataFrame(columns=["region", "sales"])
 
     result = (
-        df.groupby(cols["region"], dropna=False)[cols["sales"]]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_n)
-        .reset_index()
+        df.groupby(cols["region"], dropna=False, as_index=False)
+        .agg(sales=(cols["sales"], "sum"))
     )
+    result = result.sort_values("sales", ascending=False).head(top_n)
     result.columns = ["region", "sales"]
     return result
 
@@ -120,7 +123,11 @@ def monthly_sales(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["month", "sales"])
 
     tmp["month"] = tmp[cols["date"]].dt.to_period("M").astype(str)
-    result = tmp.groupby("month")[cols["sales"]].sum().sort_index().reset_index()
+    result = (
+        tmp.groupby("month", as_index=False)
+        .agg(sales=(cols["sales"], "sum"))
+        .sort_values("month")
+    )
     result.columns = ["month", "sales"]
     return result
 
