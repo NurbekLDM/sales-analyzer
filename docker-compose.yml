@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    container_name: sales-data-analyzer
+    ports:
+      - "8501:8501"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://salesuser:salespass@postgres:5432/salesdb}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sales-analyzer-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-salesdb}
+      - POSTGRES_USER=${POSTGRES_USER:-salesuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-salespass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salesuser} -d ${POSTGRES_DB:-salesdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

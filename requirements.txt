@@ -1,0 +1,7 @@
+streamlit==1.45.0
+pandas==2.2.3
+openpyxl==3.1.5
+sqlalchemy==2.0.40
+psycopg[binary]==3.2.6
+openai==1.76.0
+python-dotenv==1.0.1
