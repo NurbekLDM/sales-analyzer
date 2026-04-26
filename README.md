@@ -72,6 +72,42 @@ Agar Streamlit Cloud o'rniga Docker bilan public qilish kerak bo'lsa:
 
 Shunda ilova public URL orqali ochiladi.
 
+## 4.1) Tashqi Nginx reverse proxy (server ichidagi Nginx)
+
+Loyiha ichida tayyor fayllar:
+- `deploy/nginx/sales-analyzer.conf`
+- `deploy/nginx/enable-nginx.sh`
+- `deploy/nginx/enable-https.sh`
+
+### Aktivlashtirish (HTTP)
+
+Serverda loyiha papkasiga kirib:
+```bash
+docker compose up -d --build
+sudo bash deploy/nginx/enable-nginx.sh your-domain.com
+```
+
+Yoki domain bo'lmasa:
+```bash
+sudo bash deploy/nginx/enable-nginx.sh SERVER_PUBLIC_IP
+```
+
+### HTTPS yoqish (Let's Encrypt)
+
+```bash
+sudo bash deploy/nginx/enable-https.sh your-domain.com your-email@example.com
+```
+
+### Tekshiruv
+
+```bash
+sudo nginx -t
+sudo systemctl status nginx
+curl -I http://your-domain.com
+```
+
+Eslatma: `docker-compose.yml` ichida app va postgres portlari faqat localhostga bind qilingan (`127.0.0.1`). Tashqi trafikni Nginx qabul qiladi.
+
 ## 5) Savol namunalar
 - `Jami savdo qancha?`
 - `Top product qaysi?`

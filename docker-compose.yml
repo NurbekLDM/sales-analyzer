@@ -3,7 +3,7 @@ services:
     build: .
     container_name: sales-data-analyzer
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://salesuser:salespass@postgres:5432/salesdb}
     depends_on:
@@ -19,7 +19,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-salesuser}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-salespass}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
